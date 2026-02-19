@@ -1,0 +1,24 @@
+<svg width="1200" height="220" viewBox="0 0 1200 220" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="220" fill="#000000"/>
+
+  <!-- Hex Icon -->
+  <g transform="translate(40,30)">
+    <polygon points="80,0 160,40 160,120 80,160 0,120 0,40"
+             fill="#4A4F50"/>
+    <polygon points="80,10 150,45 150,115 80,150 10,115 10,45"
+             fill="#FFFFFF"/>
+    <polygon points="80,30 130,55 130,105 80,130 30,105 30,55"
+             fill="#4A4F50"/>
+    <path d="M55 55 L105 80 L55 105 Z" fill="#FFFFFF"/>
+  </g>
+
+  <!-- Text: INTANGLES -->
+  <text x="240" y="145"
+        font-family="Arial Black, Impact, sans-serif"
+        font-size="130"
+        font-weight="900"
+        letter-spacing="4">
+    <tspan fill="#5FAEB8">IN</tspan>
+    <tspan fill="#FFFFFF">TANGLES</tspan>
+  </text>
+</svg>
