@@ -1,0 +1,9 @@
+streamlit
+streamlit-autorefresh
+plotly
+pandas
+numpy
+requests
+google-api-python-client
+google-auth
+google-auth-httplib2
