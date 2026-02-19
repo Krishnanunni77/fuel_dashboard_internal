@@ -980,388 +980,322 @@ with tabs[7]:
 # ─────────────────────────────────────────────────────────────────────────────
 # TIME RANGE EXPORT tab  (live fetch, custom date range)
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# TIME RANGE EXPORT tab  (live fetch, custom date range)
+# ─────────────────────────────────────────────────────────────────────────────
 with tabs[8]:
-    st.session_state.active_tab = 8   # record we're on this tab
-    st.markdown("<h2 style='text-align:center;'>📅 Time Range Export</h2>", unsafe_allow_html=True)
-    st.info(
-        "Select a region, data types, and a **custom date range** then click **Fetch & Export**. "
-        "Data is fetched live from the API for that exact window — independent of the dashboard date range above."
-    )
-    st.markdown("---")
+    st.session_state.active_tab = 8
 
-    def _set_tab8():
-        st.session_state.active_tab = 8
-
-    # ── Controls row ──────────────────────────────────────────────────────────
-    tr_col1, tr_col2, tr_col3, tr_col4 = st.columns([2, 2, 2, 2])
-
-    with tr_col1:
-        tr_region = st.selectbox(
-            "Region",
-            options=["IND", "NASA", "EU", "FML"],
-            format_func=lambda r: REGION_DISPLAY_NAMES.get(r, r),
-            key="tr_region", on_change=_set_tab8
+    @st.fragment
+    def time_range_export_fragment():
+        st.markdown("<h2 style='text-align:center;'>📅 Time Range Export</h2>", unsafe_allow_html=True)
+        st.info(
+            "Select a region, data types, and a **custom date range** then click **Fetch & Export**. "
+            "Data is fetched live from the API for that exact window — independent of the dashboard date range above."
         )
+        st.markdown("---")
 
-    with tr_col2:
-        tr_start = st.date_input(
-            "From Date",
-            value=(pd.Timestamp.now() - pd.Timedelta(days=12)).date(),
-            key="tr_start", on_change=_set_tab8
-        )
+        # ── Controls row ──────────────────────────────────────────────────────────
+        tr_col1, tr_col2, tr_col3, tr_col4 = st.columns([2, 2, 2, 2])
 
-    with tr_col3:
-        tr_end = st.date_input(
-            "To Date",
-            value=(pd.Timestamp.now() - pd.Timedelta(days=2)).date(),
-            key="tr_end", on_change=_set_tab8
-        )
-
-    with tr_col4:
-        st.markdown("<br>", unsafe_allow_html=True)   # vertical align with inputs
-        tr_fetch = st.button("🚀 Fetch & Export", key="tr_fetch_btn", use_container_width=True, on_click=_set_tab8)
-
-    # ── Data type checkboxes ──────────────────────────────────────────────────
-    st.markdown("**Select data types to export:**")
-
-    cb_col1, cb_col2, cb_col3, cb_col4, cb_col5, cb_col6, cb_col7 = st.columns(7)
-    with cb_col1:
-        cb_theft      = st.checkbox("DPL Theft",    value=True,  key="cb_theft",     on_change=_set_tab8)
-    with cb_col2:
-        cb_fill       = st.checkbox("DPL Filling",  value=True,  key="cb_fill",      on_change=_set_tab8)
-    with cb_col3:
-        cb_cev_theft  = st.checkbox("CEV Theft",    value=False, key="cb_cev_theft", on_change=_set_tab8)
-    with cb_col4:
-        cb_cev_fill   = st.checkbox("CEV Filling",  value=False, key="cb_cev_fill",  on_change=_set_tab8)
-    with cb_col5:
-        cb_low_fuel   = st.checkbox("Low Fuel",     value=False, key="cb_low_fuel",  on_change=_set_tab8)
-    with cb_col6:
-        cb_data_loss  = st.checkbox("Data Loss",    value=False, key="cb_data_loss", on_change=_set_tab8)
-    with cb_col7:
-        cb_combined   = st.checkbox("Combined CSV", value=False, key="cb_combined",
-                                    help="Merge all selected types into one file with a Data_Type column",
-                                    on_change=_set_tab8)
-
-    st.markdown("---")
-
-    # ── Fetch on button click ─────────────────────────────────────────────────
-    if tr_fetch:
-        if not any([cb_theft, cb_fill, cb_cev_theft, cb_cev_fill, cb_low_fuel, cb_data_loss]):
-            st.warning("Please select at least one data type.")
-        elif tr_start > tr_end:
-            st.error("'From Date' must be before 'To Date'.")
-        else:
-            tr_start_ms = int(pd.Timestamp(tr_start).normalize().timestamp() * 1000)
-            tr_end_ms   = int((pd.Timestamp(tr_end).normalize() + pd.Timedelta(days=1)).timestamp() * 1000)
-            tr_url      = REGIONS[tr_region]
-            tr_unit     = UNIT_MAP[tr_region]
-            tr_label    = REGION_DISPLAY_NAMES.get(tr_region, tr_region)
-            date_tag    = f"{tr_start}_{tr_end}"
-
-            # Import live fetch functions
-            from data_fetcher import (
-                fetch_batches,
-                fetch_low_fuel_batches,
-                fetch_data_loss_batches,
-                safe_parse_variation,
-                ensure_timestamp_consistency,
-                clean_common_filters,
-                build_cev_df,
-                add_usfs_column,
-                build_data_loss_summary,
-                GALLON_CONVERSION,
-                MCE_TYPES,
+        with tr_col1:
+            tr_region = st.selectbox(
+                "Region",
+                options=["IND", "NASA", "EU", "FML"],
+                format_func=lambda r: REGION_DISPLAY_NAMES.get(r, r),
+                key="tr_region"
             )
 
-            needs_theft_fill = cb_theft or cb_fill or cb_cev_theft or cb_cev_fill
-            needs_low_fuel   = cb_low_fuel
-            needs_data_loss  = cb_data_loss
+        with tr_col2:
+            tr_start = st.date_input(
+                "From Date",
+                value=(pd.Timestamp.now() - pd.Timedelta(days=12)).date(),
+                key="tr_start"
+            )
 
-            theft_df = fill_df = low_fuel_df = data_loss_df = pd.DataFrame()
-            theft_cev_df = fill_cev_df = pd.DataFrame()
+        with tr_col3:
+            tr_end = st.date_input(
+                "To Date",
+                value=(pd.Timestamp.now() - pd.Timedelta(days=2)).date(),
+                key="tr_end"
+            )
 
-            # ── Fetch theft + filling ─────────────────────────────────────────
-            if needs_theft_fill:
-                with st.spinner(f"Fetching theft & filling data for {tr_label} …"):
-                    raw_theft, raw_fill = fetch_batches(tr_start_ms, tr_end_ms, tr_url)
+        with tr_col4:
+            st.markdown("<br>", unsafe_allow_html=True)
+            tr_fetch = st.button("🚀 Fetch & Export", key="tr_fetch_btn", use_container_width=True)
 
-                    # probable_variation
-                    for df_ref, label in [(raw_theft, "theft"), (raw_fill, "fill")]:
-                        if "probable_variation" in df_ref.columns:
-                            df_ref["probable_variation_max"] = df_ref["probable_variation"].apply(safe_parse_variation)
-                        else:
-                            df_ref["probable_variation_max"] = None
+        # ── Data type checkboxes ──────────────────────────────────────────────────
+        st.markdown("**Select data types to export:**")
 
-                    # NASA gallon conversion
-                    if tr_region == "NASA":
-                        for df_ref in [raw_theft, raw_fill]:
-                            if "amount" in df_ref.columns:
-                                df_ref["amount"] *= GALLON_CONVERSION
+        cb_col1, cb_col2, cb_col3, cb_col4, cb_col5, cb_col6, cb_col7 = st.columns(7)
+        with cb_col1:
+            cb_theft     = st.checkbox("DPL Theft",    value=True,  key="cb_theft")
+        with cb_col2:
+            cb_fill      = st.checkbox("DPL Filling",  value=True,  key="cb_fill")
+        with cb_col3:
+            cb_cev_theft = st.checkbox("CEV Theft",    value=False, key="cb_cev_theft")
+        with cb_col4:
+            cb_cev_fill  = st.checkbox("CEV Filling",  value=False, key="cb_cev_fill")
+        with cb_col5:
+            cb_low_fuel  = st.checkbox("Low Fuel",     value=False, key="cb_low_fuel")
+        with cb_col6:
+            cb_data_loss = st.checkbox("Data Loss",    value=False, key="cb_data_loss")
+        with cb_col7:
+            cb_combined  = st.checkbox("Combined CSV", value=False, key="cb_combined",
+                                       help="Merge all selected types into one file with a Data_Type column")
 
-                    # FML kg override
-                    if tr_region == "FML":
-                        if "Amount_kgs" in raw_theft.columns:
-                            raw_theft["amount"] = raw_theft["Amount_kgs"]
-                        if "Amount_kgs" in raw_fill.columns:
-                            raw_fill["amount"]  = raw_fill["Amount_kgs"]
+        st.markdown("---")
 
-                    # Timestamps
-                    raw_theft = ensure_timestamp_consistency(raw_theft)
-                    raw_fill  = ensure_timestamp_consistency(raw_fill)
+        # ── Only fetch when button is clicked ────────────────────────────────────
+        if tr_fetch:
+            if not any([cb_theft, cb_fill, cb_cev_theft, cb_cev_fill, cb_low_fuel, cb_data_loss]):
+                st.warning("Please select at least one data type.")
+            elif tr_start > tr_end:
+                st.error("'From Date' must be before 'To Date'.")
+            else:
+                tr_start_ms = int(pd.Timestamp(tr_start).normalize().timestamp() * 1000)
+                tr_end_ms   = int((pd.Timestamp(tr_end).normalize() + pd.Timedelta(days=1)).timestamp() * 1000)
+                tr_url      = REGIONS[tr_region]
+                tr_unit     = UNIT_MAP[tr_region]
+                tr_label    = REGION_DISPLAY_NAMES.get(tr_region, tr_region)
+                date_tag    = f"{tr_start}_{tr_end}"
 
-                    # CEV split (before DPL filter)
-                    theft_cev_df = build_cev_df(raw_theft)
-                    fill_cev_df  = build_cev_df(raw_fill)
-
-                    # DPL filter
-                    theft_df = clean_common_filters(raw_theft)
-                    fill_df  = clean_common_filters(raw_fill)
-
-                    # USFS tags
-                    theft_df = add_usfs_column(theft_df)
-                    fill_df  = add_usfs_column(fill_df)
-
-                st.success(
-                    f"Fetched: **{len(theft_df):,}** DPL theft  |  "
-                    f"**{len(fill_df):,}** DPL filling  |  "
-                    f"**{len(theft_cev_df):,}** CEV theft  |  "
-                    f"**{len(fill_cev_df):,}** CEV filling"
+                from data_fetcher import (
+                    fetch_batches,
+                    fetch_low_fuel_batches,
+                    fetch_data_loss_batches,
+                    safe_parse_variation,
+                    ensure_timestamp_consistency,
+                    clean_common_filters,
+                    build_cev_df,
+                    add_usfs_column,
+                    build_data_loss_summary,
+                    build_daily_df,
+                    build_daily_alert_count_df,
+                    build_daily_pv_df,
+                    GALLON_CONVERSION,
+                    MCE_TYPES,
                 )
 
-            # ── Fetch low fuel ────────────────────────────────────────────────
-            if needs_low_fuel:
-                with st.spinner(f"Fetching low fuel alerts for {tr_label} …"):
-                    low_fuel_df = fetch_low_fuel_batches(tr_start_ms, tr_end_ms, tr_url)
-                    low_fuel_df = ensure_timestamp_consistency(low_fuel_df)
-                    low_fuel_df = clean_common_filters(low_fuel_df)
-                st.success(f"Fetched: **{len(low_fuel_df):,}** low fuel alerts")
+                needs_theft_fill = cb_theft or cb_fill or cb_cev_theft or cb_cev_fill
+                needs_low_fuel   = cb_low_fuel
+                needs_data_loss  = cb_data_loss
 
-            # ── Fetch data loss ───────────────────────────────────────────────
-            if needs_data_loss:
-                with st.spinner(f"Fetching data loss events for {tr_label} …"):
-                    data_loss_df = fetch_data_loss_batches(tr_start_ms, tr_end_ms, tr_url)
-                    data_loss_df = ensure_timestamp_consistency(data_loss_df)
-                st.success(f"Fetched: **{len(data_loss_df):,}** data loss events")
+                theft_df = fill_df = low_fuel_df = data_loss_df = pd.DataFrame()
+                theft_cev_df = fill_cev_df = pd.DataFrame()
 
-            st.markdown("---")
+                if needs_theft_fill:
+                    with st.spinner(f"Fetching theft & filling data for {tr_label} …"):
+                        raw_theft, raw_fill = fetch_batches(tr_start_ms, tr_end_ms, tr_url)
 
-            # Import daily builders for charting
-            from data_fetcher import (
-                build_daily_df,
-                build_daily_alert_count_df,
-                build_daily_pv_df,
-                build_daily_amount_df,
-            )
+                        for df_ref in [raw_theft, raw_fill]:
+                            if "probable_variation" in df_ref.columns:
+                                df_ref["probable_variation_max"] = df_ref["probable_variation"].apply(safe_parse_variation)
+                            else:
+                                df_ref["probable_variation_max"] = None
 
-            # ── Legend ────────────────────────────────────────────────────────
-            st.markdown(
-                """
-                <div style="
-                    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-                    padding: 10px 24px; border-radius: 8px; margin-bottom: 14px;
-                    text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                ">
-                    <span style="font-size:16px;font-weight:bold;color:#333;margin-right:24px;">Legend:</span>
-                    <span style="font-size:17px;color:#1e88e5;margin-right:20px;">
-                        <span style="display:inline-block;width:32px;height:3px;background:#1e88e5;vertical-align:middle;margin-right:6px;"></span>
-                        <strong>Daily Amount / Count</strong>
-                    </span>
-                    <span style="font-size:17px;color:#43a047;">
-                        <span style="display:inline-block;width:32px;height:3px;background:#43a047;border-top:2px dotted #43a047;vertical-align:middle;margin-right:6px;"></span>
-                        <strong>Moving Average</strong>
-                    </span>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                        if tr_region == "NASA":
+                            for df_ref in [raw_theft, raw_fill]:
+                                if "amount" in df_ref.columns:
+                                    df_ref["amount"] *= GALLON_CONVERSION
 
-            # ── Helper: chart + download block ────────────────────────────────
-            def _chart_and_download(raw_df, chart_title, dl_label,
-                                     filename, dl_key, plot_type="amount"):
-                """
-                Renders a chart from raw_df and a download button below it.
-                plot_type: "amount" | "low_fuel" | "pv"
-                """
-                if raw_df is None or raw_df.empty:
-                    st.info(f"No data available for **{chart_title}**")
-                    return
+                        if tr_region == "FML":
+                            if "Amount_kgs" in raw_theft.columns:
+                                raw_theft["amount"] = raw_theft["Amount_kgs"]
+                            if "Amount_kgs" in raw_fill.columns:
+                                raw_fill["amount"]  = raw_fill["Amount_kgs"]
 
-                # Build daily aggregate
-                if plot_type == "amount":
-                    daily = build_daily_df(raw_df)
-                elif plot_type == "low_fuel":
-                    daily = build_daily_alert_count_df(raw_df)
-                elif plot_type == "pv":
-                    pv_df = raw_df[~raw_df["probable_variation_max"].isna()].copy() \
-                        if "probable_variation_max" in raw_df.columns else pd.DataFrame()
-                    daily = build_daily_pv_df(pv_df)
-                else:
-                    daily = build_daily_df(raw_df)
+                        raw_theft = ensure_timestamp_consistency(raw_theft)
+                        raw_fill  = ensure_timestamp_consistency(raw_fill)
 
-                # Draw chart
-                if not daily.empty:
-                    if plot_type == "low_fuel":
-                        fig = create_plot_low_fuel(daily, chart_title)
-                    elif plot_type == "pv":
-                        fig = create_plot_pv(daily, chart_title, tr_unit)
-                    else:
-                        fig = create_plot(daily, chart_title, tr_unit)
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.info(f"No daily data to plot for **{chart_title}**")
+                        theft_cev_df = build_cev_df(raw_theft)
+                        fill_cev_df  = build_cev_df(raw_fill)
 
-                # Download button directly below the chart
-                dl_col1, dl_col2, dl_col3 = st.columns([4, 2, 2])
-                with dl_col1:
-                    st.caption(f"{len(raw_df):,} raw records")
-                with dl_col3:
-                    st.download_button(
-                        label=f"📥 {dl_label}",
-                        data=raw_df.to_csv(index=False),
-                        file_name=filename,
-                        mime="text/csv",
-                        key=dl_key,
-                        on_click=_set_tab8
+                        theft_df = clean_common_filters(raw_theft)
+                        fill_df  = clean_common_filters(raw_fill)
+
+                        theft_df = add_usfs_column(theft_df)
+                        fill_df  = add_usfs_column(fill_df)
+
+                    st.success(
+                        f"Fetched: **{len(theft_df):,}** DPL theft  |  "
+                        f"**{len(fill_df):,}** DPL filling  |  "
+                        f"**{len(theft_cev_df):,}** CEV theft  |  "
+                        f"**{len(fill_cev_df):,}** CEV filling"
                     )
+
+                if needs_low_fuel:
+                    with st.spinner(f"Fetching low fuel alerts for {tr_label} …"):
+                        low_fuel_df = fetch_low_fuel_batches(tr_start_ms, tr_end_ms, tr_url)
+                        low_fuel_df = ensure_timestamp_consistency(low_fuel_df)
+                        low_fuel_df = clean_common_filters(low_fuel_df)
+                    st.success(f"Fetched: **{len(low_fuel_df):,}** low fuel alerts")
+
+                if needs_data_loss:
+                    with st.spinner(f"Fetching data loss events for {tr_label} …"):
+                        data_loss_df = fetch_data_loss_batches(tr_start_ms, tr_end_ms, tr_url)
+                        data_loss_df = ensure_timestamp_consistency(data_loss_df)
+                    st.success(f"Fetched: **{len(data_loss_df):,}** data loss events")
+
                 st.markdown("---")
 
-            # ── Render each selected type ─────────────────────────────────────
-            if cb_theft:
-                _chart_and_download(
-                    theft_df,
-                    f"{tr_label} – DPL Theft",
-                    "Download DPL Theft CSV",
-                    f"{tr_region}_DPL_Theft_{date_tag}.csv",
-                    "tr_dl_theft",
-                    plot_type="amount"
+                # Legend
+                st.markdown(
+                    """
+                    <div style="
+                        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                        padding: 10px 24px; border-radius: 8px; margin-bottom: 14px;
+                        text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                    ">
+                        <span style="font-size:16px;font-weight:bold;color:#333;margin-right:24px;">Legend:</span>
+                        <span style="font-size:17px;color:#1e88e5;margin-right:20px;">
+                            <span style="display:inline-block;width:32px;height:3px;background:#1e88e5;vertical-align:middle;margin-right:6px;"></span>
+                            <strong>Daily Amount / Count</strong>
+                        </span>
+                        <span style="font-size:17px;color:#43a047;">
+                            <span style="display:inline-block;width:32px;height:3px;background:#43a047;border-top:2px dotted #43a047;vertical-align:middle;margin-right:6px;"></span>
+                            <strong>Moving Average</strong>
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
 
-            if cb_fill:
-                _chart_and_download(
-                    fill_df,
-                    f"{tr_label} – DPL Filling",
-                    "Download DPL Filling CSV",
-                    f"{tr_region}_DPL_Filling_{date_tag}.csv",
-                    "tr_dl_fill",
-                    plot_type="amount"
-                )
+                def _chart_and_download(raw_df, chart_title, dl_label,
+                                        filename, dl_key, plot_type="amount"):
+                    if raw_df is None or raw_df.empty:
+                        st.info(f"No data available for **{chart_title}**")
+                        return
 
-            if cb_cev_theft:
-                _chart_and_download(
-                    theft_cev_df,
-                    f"{tr_label} – CEV Theft",
-                    "Download CEV Theft CSV",
-                    f"{tr_region}_CEV_Theft_{date_tag}.csv",
-                    "tr_dl_cev_theft",
-                    plot_type="amount"
-                )
-
-            if cb_cev_fill:
-                _chart_and_download(
-                    fill_cev_df,
-                    f"{tr_label} – CEV Filling",
-                    "Download CEV Filling CSV",
-                    f"{tr_region}_CEV_Filling_{date_tag}.csv",
-                    "tr_dl_cev_fill",
-                    plot_type="amount"
-                )
-
-            if cb_low_fuel:
-                _chart_and_download(
-                    low_fuel_df,
-                    f"{tr_label} – Low Fuel Alerts",
-                    "Download Low Fuel CSV",
-                    f"{tr_region}_Low_Fuel_{date_tag}.csv",
-                    "tr_dl_low_fuel",
-                    plot_type="low_fuel"
-                )
-
-            if cb_data_loss:
-                # Data loss: show summary bar chart + raw download
-                if data_loss_df is not None and not data_loss_df.empty:
-                    from data_fetcher import build_data_loss_summary
-                    dl_summary = build_data_loss_summary(data_loss_df)
-
-                    if not dl_summary.empty:
-                        st.subheader(f"{tr_label} – Data Loss Breakdown")
-                        bar_fig = go.Figure(data=[
-                            go.Bar(
-                                x=dl_summary["Data loss type"],
-                                y=dl_summary["Count"],
-                                marker_color="#667eea",
-                                text=dl_summary["Count"],
-                                textposition="outside"
-                            )
-                        ])
-                        bar_fig.update_layout(
-                            xaxis_title="Loss Type",
-                            yaxis_title="Count",
-                            height=380,
-                            margin=dict(t=40, b=60, l=60, r=40),
-                            xaxis=dict(tickfont=dict(size=13)),
-                            yaxis=dict(tickfont=dict(size=13))
-                        )
-                        st.plotly_chart(bar_fig, use_container_width=True)
-                        st.dataframe(dl_summary, use_container_width=True, hide_index=True)
+                    if plot_type == "amount":
+                        daily = build_daily_df(raw_df)
+                    elif plot_type == "low_fuel":
+                        daily = build_daily_alert_count_df(raw_df)
+                    elif plot_type == "pv":
+                        pv_df = raw_df[~raw_df["probable_variation_max"].isna()].copy() \
+                            if "probable_variation_max" in raw_df.columns else pd.DataFrame()
+                        daily = build_daily_pv_df(pv_df)
                     else:
-                        st.info("No data loss type breakdown available.")
+                        daily = build_daily_df(raw_df)
 
-                    dl_col1, _, dl_col3 = st.columns([4, 2, 2])
+                    if not daily.empty:
+                        if plot_type == "low_fuel":
+                            fig = create_plot_low_fuel(daily, chart_title)
+                        elif plot_type == "pv":
+                            fig = create_plot_pv(daily, chart_title, tr_unit)
+                        else:
+                            fig = create_plot(daily, chart_title, tr_unit)
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info(f"No daily data to plot for **{chart_title}**")
+
+                    dl_col1, dl_col2, dl_col3 = st.columns([4, 2, 2])
                     with dl_col1:
-                        st.caption(f"{len(data_loss_df):,} raw records")
+                        st.caption(f"{len(raw_df):,} raw records")
                     with dl_col3:
                         st.download_button(
-                            label="📥 Download Data Loss CSV",
-                            data=data_loss_df.to_csv(index=False),
-                            file_name=f"{tr_region}_Data_Loss_{date_tag}.csv",
+                            label=f"📥 {dl_label}",
+                            data=raw_df.to_csv(index=False),
+                            file_name=filename,
                             mime="text/csv",
-                            key="tr_dl_data_loss",
-                            on_click=_set_tab8
+                            key=dl_key
                         )
                     st.markdown("---")
-                else:
-                    st.info(f"No data loss events for {tr_label}")
 
-            # ── Combined CSV ──────────────────────────────────────────────────
-            if cb_combined:
-                all_combined = []
+                if cb_theft:
+                    _chart_and_download(theft_df, f"{tr_label} – DPL Theft", "Download DPL Theft CSV",
+                                        f"{tr_region}_DPL_Theft_{date_tag}.csv", "tr_dl_theft")
+                if cb_fill:
+                    _chart_and_download(fill_df, f"{tr_label} – DPL Filling", "Download DPL Filling CSV",
+                                        f"{tr_region}_DPL_Filling_{date_tag}.csv", "tr_dl_fill")
+                if cb_cev_theft:
+                    _chart_and_download(theft_cev_df, f"{tr_label} – CEV Theft", "Download CEV Theft CSV",
+                                        f"{tr_region}_CEV_Theft_{date_tag}.csv", "tr_dl_cev_theft")
+                if cb_cev_fill:
+                    _chart_and_download(fill_cev_df, f"{tr_label} – CEV Filling", "Download CEV Filling CSV",
+                                        f"{tr_region}_CEV_Filling_{date_tag}.csv", "tr_dl_cev_fill")
+                if cb_low_fuel:
+                    _chart_and_download(low_fuel_df, f"{tr_label} – Low Fuel Alerts", "Download Low Fuel CSV",
+                                        f"{tr_region}_Low_Fuel_{date_tag}.csv", "tr_dl_low_fuel",
+                                        plot_type="low_fuel")
 
-                def _tag_and_append(df, label):
-                    if df is not None and not df.empty:
-                        d = df.copy()
-                        d["Data_Type"] = label
-                        all_combined.append(d)
+                if cb_data_loss:
+                    if data_loss_df is not None and not data_loss_df.empty:
+                        dl_summary = build_data_loss_summary(data_loss_df)
+                        if not dl_summary.empty:
+                            st.subheader(f"{tr_label} – Data Loss Breakdown")
+                            bar_fig = go.Figure(data=[
+                                go.Bar(
+                                    x=dl_summary["Data loss type"],
+                                    y=dl_summary["Count"],
+                                    marker_color="#667eea",
+                                    text=dl_summary["Count"],
+                                    textposition="outside"
+                                )
+                            ])
+                            bar_fig.update_layout(
+                                xaxis_title="Loss Type", yaxis_title="Count",
+                                height=380, margin=dict(t=40, b=60, l=60, r=40),
+                                xaxis=dict(tickfont=dict(size=13)),
+                                yaxis=dict(tickfont=dict(size=13))
+                            )
+                            st.plotly_chart(bar_fig, use_container_width=True)
+                            st.dataframe(dl_summary, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("No data loss type breakdown available.")
 
-                if cb_theft:      _tag_and_append(theft_df,     "DPL_Theft")
-                if cb_fill:       _tag_and_append(fill_df,      "DPL_Filling")
-                if cb_cev_theft:  _tag_and_append(theft_cev_df, "CEV_Theft")
-                if cb_cev_fill:   _tag_and_append(fill_cev_df,  "CEV_Filling")
-                if cb_low_fuel:   _tag_and_append(low_fuel_df,  "Low_Fuel_Alert")
-                if cb_data_loss:  _tag_and_append(data_loss_df, "Data_Loss")
+                        dl_col1, _, dl_col3 = st.columns([4, 2, 2])
+                        with dl_col1:
+                            st.caption(f"{len(data_loss_df):,} raw records")
+                        with dl_col3:
+                            st.download_button(
+                                label="📥 Download Data Loss CSV",
+                                data=data_loss_df.to_csv(index=False),
+                                file_name=f"{tr_region}_Data_Loss_{date_tag}.csv",
+                                mime="text/csv",
+                                key="tr_dl_data_loss"
+                            )
+                        st.markdown("---")
+                    else:
+                        st.info(f"No data loss events for {tr_label}")
 
-                if all_combined:
-                    combined_tr = pd.concat(all_combined, ignore_index=True, sort=False)
-                    cols = ["Data_Type"] + [c for c in combined_tr.columns if c != "Data_Type"]
-                    combined_tr = combined_tr[cols]
+                if cb_combined:
+                    all_combined = []
 
-                    st.download_button(
-                        label=f"⬇️ Download Combined CSV — {len(combined_tr):,} total records",
-                        data=combined_tr.to_csv(index=False),
-                        file_name=f"{tr_region}_Combined_{date_tag}.csv",
-                        mime="text/csv",
-                        key="tr_dl_combined",
-                        on_click=_set_tab8
-                    )
-                    st.success(f"Combined export ready: **{len(combined_tr):,}** records across {len(all_combined)} data type(s).")
-                else:
-                    st.warning("No data to combine.")
+                    def _tag_and_append(df, label):
+                        if df is not None and not df.empty:
+                            d = df.copy()
+                            d["Data_Type"] = label
+                            all_combined.append(d)
 
-            # ── API errors (if any) ───────────────────────────────────────────
-            tr_errors = get_api_errors()
-            if tr_errors:
-                with st.expander(f"⚠️ {len(tr_errors)} API error(s) during fetch — click to view"):
-                    for err in tr_errors:
-                        st.code(err)
+                    if cb_theft:      _tag_and_append(theft_df,     "DPL_Theft")
+                    if cb_fill:       _tag_and_append(fill_df,      "DPL_Filling")
+                    if cb_cev_theft:  _tag_and_append(theft_cev_df, "CEV_Theft")
+                    if cb_cev_fill:   _tag_and_append(fill_cev_df,  "CEV_Filling")
+                    if cb_low_fuel:   _tag_and_append(low_fuel_df,  "Low_Fuel_Alert")
+                    if cb_data_loss:  _tag_and_append(data_loss_df, "Data_Loss")
 
+                    if all_combined:
+                        combined_tr = pd.concat(all_combined, ignore_index=True, sort=False)
+                        cols = ["Data_Type"] + [c for c in combined_tr.columns if c != "Data_Type"]
+                        combined_tr = combined_tr[cols]
+                        st.download_button(
+                            label=f"⬇️ Download Combined CSV — {len(combined_tr):,} total records",
+                            data=combined_tr.to_csv(index=False),
+                            file_name=f"{tr_region}_Combined_{date_tag}.csv",
+                            mime="text/csv",
+                            key="tr_dl_combined"
+                        )
+                        st.success(f"Combined export ready: **{len(combined_tr):,}** records across {len(all_combined)} data type(s).")
+                    else:
+                        st.warning("No data to combine.")
+
+                tr_errors = get_api_errors()
+                if tr_errors:
+                    with st.expander(f"⚠️ {len(tr_errors)} API error(s) during fetch — click to view"):
+                        for err in tr_errors:
+                            st.code(err)
+
+    time_range_export_fragment()
 
 st.caption("© Intangles | Fuel Monitoring Dashboard")
